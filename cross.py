@@ -70,25 +70,7 @@ def calculate_lag(lc1, lc2, dt, flo, fhi, nbins):
 
     return fbin, dfbin, lag, dlag, avgpows, avgpowh, nbinned
 
-def lag_freq():
-
-    p = argparse.ArgumentParser(
-        description="Calculate lags",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-
-    p.add_argument("--lcfiles"    , metavar="lcfiles", type=str, default='',help="String with names of input files")
-    p.add_argument("--flo"  , metavar="flo", type=float, default=1e-4, help="Lower Bound Frequency")
-    p.add_argument("--fhi"  , metavar="fhi", type=float, default=1e-2, help="Upper Bound Frequency")
-    p.add_argument("--fnbin"  , metavar="fnbin", type=float, default=10, help="Number of Frequency Bins")
-    args = p.parse_args()
-
-    ## ------------------------------------
-    lcfiles= np.array(args.lcfiles.split())
-    flo    = args.flo
-    fhi = args.fhi
-    fnbin = args.fnbin
-    ## ------------------------------------
-
+def xmm_lag_freq():
 
     nlc = len(lcfiles)/2
     lcs = []
@@ -106,7 +88,33 @@ def lag_freq():
 
     fbin, dfbin, lag, dlag, avgpows, avgpowh, nbinned = calculate_lag(lcs, lch, dt, np.log10(flo), np.log10(fhi), fnbin)
 
+def nustar_lag_freq():
 
+    data_lcA = np.loadtxt(lcfiles[0], unpack=True)
+    data_lcB = np.loadtxt(lcfiles[1], unpack=True)
+
+    t = data_lcA[0]
+    dt = t[1] - t[0]
+
+    t_edge = []
+    for i in range(len(t)-1):
+        if t[i+1] - t[i] > dt*10:
+            continue
+        else:
+            t_edge.append(i)
+    t_edge = np.array(t_edge)
+
+    data_lcA = np.array_split(data_lcA, t_edge, axis=1)
+    data_lcB = np.array_split(data_lcB, t_edge, axis=1)
+
+    lcA_soft = data_lcA[1]
+    lcB_soft = data_lcB[1]
+    lcA_hard = data_lcA[3]
+    lcB_hard = data_lcB[3]
+    
+    fbin, dfbin, lag, dlag, avgpows, avgpowh, nbinned = calculate_lag(lcs, lch, dt, np.log10(flo), np.log10(fhi), fnbin)
+
+def plot_lag()
     # plot
     fig = plt.figure()
     ax = fig.add_subplot(111)
@@ -125,5 +133,29 @@ def lag_freq():
 
 if __name__ == "__main__":
     import ipdb
-    lag_freq()
+    p = argparse.ArgumentParser(
+        description="Calculate lags",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    p.add_argument("--lcfiles"    , metavar="lcfiles", type=str, default='',help="String with names of input files")
+    p.add_argument("--flo"  , metavar="flo", type=float, default=1e-4, help="Lower Bound Frequency")
+    p.add_argument("--fhi"  , metavar="fhi", type=float, default=1e-2, help="Upper Bound Frequency")
+    p.add_argument("--fnbin"  , metavar="fnbin", type=float, default=10, help="Number of Frequency Bins")
+    p.add_argument("--instr"  , metavar="instr", type=str, default='xmm', help="xmm or nustar?")
+    args = p.parse_args()
+
+    ## ------------------------------------
+    lcfiles= np.array(args.lcfiles.split())
+    flo    = args.flo
+    fhi = args.fhi
+    fnbin = args.fnbin
+    instr = args.instr
+    ## ------------------------------------
+
+    if instr == 'xmm':
+        xmm_lag_freq()
+    else:
+        nustar_lag_freq()
+
+    plot_lag()
 
