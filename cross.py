@@ -181,6 +181,33 @@ def print_coher(fbin, dfbin, coher, dcoher, name):
     fp.write(out)
     fp.close()
 
+def frequency_dependent(data):
+
+    dt = data[0][1] - data[0][0]
+    totlc = data[1::2] 
+    softband_indices = np.where(np.logical_and(enbins>=soft[0], enbins<soft[1]))
+    hardband_indices = np.where(np.logical_and(enbins>=soft[0], enbins<soft[1]))
+    lcsoft = totlc[softband_indices].sum(axis=0)
+    lchard = totlc[hardband_indices].sum(axis=0)
+    lightcurves_soft.append(lcsoft)
+    lightcurves_hard.append(lchard)
+    lightcurves_soft = np.array(lightcurves_soft)
+    lightcurves_hard = np.array(lightcurves_hard)
+
+    fbin, dfbin, avgc, avgpows, davgpows, avgpowh, davgpowh, nbinned = \
+        calculate_crossspec(lightcurves_soft, lightcurves_hard, dt, np.log10(flo), np.log10(fhi), fnbin)
+
+    if args.psd:
+        print_powspec(fbin, dfbin, avgpows, davgpows, avgpowh, davgpowh, name)
+
+    if args.lag:
+        lag, dlag = calculate_lag(avgc, avgpows, avgpowh, nbinned, fbin)
+        print_lag(fbin, dfbin, lag, dlag, name)
+
+    if args.coher:
+        coher, dcoher = calculate_coher(avgc, avgpows, avgpowh, nbinned, fbin)
+        print_coher(fbin, dfbin, coher, dcoher, name)
+
 def main():
     p = argparse.ArgumentParser(
         description="Calculate lag-frequency spectra",
@@ -212,38 +239,19 @@ def main():
     Nc = len(enbins)-1 
     ## ------------------------------------
 
-    lightcurves_soft = []  
-    lightcurves_hard = []  
+    all_data = []  
     for l in lcfiles:
         if args.npz:
 	        data = np.load(l)
 	        data = data['arr_0'].T
         else:
-	        data = np.loadtxt(l, unpack=True)
-        dt = data[0][1] - data[0][0]
-        totlc = data[1::2]
-        softband_indices = np.where(np.logical_and(enbins>=soft[0], enbins<soft[1]))
-        hardband_indices = np.where(np.logical_and(enbins>=soft[0], enbins<soft[1]))
-        lcsoft = totlc[softband_indices].sum(axis=0)
-        lchard = totlc[hardband_indices].sum(axis=0)
-        lightcurves_soft.append(lcsoft)
-        lightcurves_hard.append(lchard)
-    lightcurves_soft = np.array(lightcurves_soft)
-    lightcurves_hard = np.array(lightcurves_hard)
+	        data = np.loadtxt(l, unpack=True)  
+        all_data.append(data)
+    all_data = np.array(all_data)
+    ipdb.set_trace()
 
-    fbin, dfbin, avgc, avgpows, davgpows, avgpowh, davgpowh, nbinned = \
-        calculate_crossspec(lightcurves_soft, lightcurves_hard, dt, np.log10(flo), np.log10(fhi), fnbin)
-
-    if args.psd:
-        print_powspec(fbin, dfbin, avgpows, davgpows, avgpowh, davgpowh, name)
-
-    if args.lag:
-        lag, dlag = calculate_lag(avgc, avgpows, avgpowh, nbinned, fbin)
-        print_lag(fbin, dfbin, lag, dlag, name)
-
-    if args.coher:
-        coher, dcoher = calculate_coher(avgc, avgpows, avgpowh, nbinned, fbin)
-        print_coher(fbin, dfbin, coher, dcoher, name)
+    if args.freq:
+        frequency_dependence(all_data)
 
     #### coherence
 
