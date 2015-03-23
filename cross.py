@@ -3,7 +3,11 @@ import argparse
 import numpy as np
 from scipy.stats import binned_statistic
 import matplotlib.pyplot as plt
-import pyfftw
+try:
+    import pyfftw
+    USE_FFTW = True
+except ImportError:
+    USE_FFTW = False
 
 def calculate_crossspec(lc1, lc2, dt, flo, fhi, nbins):
 
@@ -15,9 +19,14 @@ def calculate_crossspec(lc1, lc2, dt, flo, fhi, nbins):
     mean_lc2 = np.mean(lc2, axis=1)
 
     # take fourier transform
-    fs =  pyfftw.interfaces.numpy_fft.fft(lc1)
-    fh = pyfftw.interfaces.numpy_fft.fft(lc2)
-    freq = pyfftw.interfaces.numpy_fft.fftfreq(n,d=dt)
+    if USE_FFTW:
+        fs =  pyfftw.interfaces.numpy_fft.fft(lc1)
+        fh = pyfftw.interfaces.numpy_fft.fft(lc2)
+        freq = pyfftw.interfaces.numpy_fft.fftfreq(n,d=dt)
+    else:
+        fs = np.fft.fft(lc1)
+        fh = np.fft.fft(lc2)
+        freq = np.fft.fftfreq(n,d=dt)
     freq = np.array(fs.shape[0]*[freq])
 
     # only use positive frequencies. fs[0]=0
@@ -81,10 +90,10 @@ def calculate_lag(avgc, avgpows, avgpowh, nbinned, fbin):
     return lag, dlag
 
 def calculate_coherence(avgc, avgpows, avgpowh, nbinned, fbin):
-
-    # to do
+    raise NotImplementedError
 
 def plot_powspec(fbin, dfbin, avgpows, davgpows, avgpowh, davgpowh):
+
     fig = plt.figure()
     ax = fig.add_subplot(111)
     ax.errorbar(fbin, avgpows,
@@ -112,7 +121,7 @@ def plot_powspec(fbin, dfbin, avgpows, davgpows, avgpowh, davgpowh):
     fp = open( '%s_powspec_4vsz.dat'%(name), 'w' )
     out = 'descriptor freq,+- pows,+- powh,+-\n'
     out += ''.join('%3.3g %3.3g %3.3g %3.3g\n'%(fbin[i],dfbin[i],\
-       avgpows[i],davgpows[i],avgpowh[i],davgpowh[i]) for i in range(len(fbin)))
+        avgpows[i],davgpows[i],avgpowh[i],davgpowh[i]) for i in range(len(fbin)))
     fp.write(out)
     fp.close()
 
@@ -137,7 +146,7 @@ def plot_lag(fbin, dfbin, lag, dlag):
     fp = open( '%s_lag_4vsz.dat'%(name), 'w' )
     out = 'descriptor freq,+- lag,+-\n'
     out += ''.join('%3.3g %3.3g %3.3g %3.3g\n'%(fbin[i],dfbin[i],\
-       lag[i],dlag[i]) for i in range(len(fbin)))
+        lag[i],dlag[i]) for i in range(len(fbin)))
     fp.write(out)
     fp.close()
 
@@ -164,7 +173,7 @@ def plot_coher(fbin, dfbin, coher, dcoher):
     fp = open( '%s_coher_4vsz.dat'%(name), 'w' )
     out = 'descriptor freq,+- coher,+-\n'
     out += ''.join('%3.3g %3.3g %3.3g %3.3g\n'%(fbin[i],dfbin[i],\
-       coher[i],dcoher[i]) for i in range(len(fbin)))
+        coher[i],dcoher[i]) for i in range(len(fbin)))
     fp.write(out)
     fp.close()
 
@@ -176,13 +185,13 @@ def main():
     p.add_argument("--lcfiles"    , metavar="lcfiles", type=str, default='',help="String with names of input files")
     p.add_argument("--flo"  , metavar="flo", type=float, default=1e-4, help="Lower Bound Frequency")
     p.add_argument("--fhi"  , metavar="fhi", type=float, default=1e-2, help="Upper Bound Frequency")
-    p.add_argument("--soft"  , metavar="flo", type=str, default="0.3,1", help="Soft band energies, e.g. "0.3,1"")
-    p.add_argument("--hard"  , metavar="fhi", type=str, default="1,4", help="Hard band energies, e.g. "1,4"")
+    p.add_argument("--soft"  , metavar="soft", type=str, default="0.3 1", help="Soft band energies, e.g. '0.3 1'")
+    p.add_argument("--hard"  , metavar="hard", type=str, default="1 4", help="Hard band energies, e.g. '1 4'")
     p.add_argument("--fnbin"  , metavar="fnbin", type=float, default=10, help="Number of Frequency Bins")
     p.add_argument('--lag', action='store_true',default=True,help='Set to make lag spectrum')
     p.add_argument('--coher', action='store_true',default=False,help='Set to make coher spectrum')
-    p.add_argument("--name"    , metavar="name", type=str, default='',help="The root name of the output files.")
     p.add_argument('--psd', action='store_true',default=False,help='Set to make hard and soft band PSDs')
+    p.add_argument("--name"    , metavar="name", type=str, default='',help="The root name of the output files.")
     p.add_argument('--npz', action='store_true',default=False,help='Set use .npz files instead of ascii. Default=False')
     args = p.parse_args()
 
@@ -191,29 +200,40 @@ def main():
     flo    = args.flo
     fhi = args.fhi
     fnbin = args.fnbin
-    soft = np.array(args.soft.split())
-    hard = np.array(args.hard.split())
+    soft = np.array(args.soft.split(),float)
+    hard = np.array(args.hard.split(),float)
     ## ------------------------------------
 
     # calculate energy bins 
     f = open(lcfiles[0], 'r')
     enbins = np.array(f.readline().split()[3:-1],float)
+    print enbins, soft, hard
+    
+    Nc = len(enbins)-1 
 
-    lcs = lcs[(np.where((enbins>soft[0]) & (enbins<=soft[1]))),:]
-    lch = lch[(np.where((enbins>hard[0]) & (enbins<=hard[1]))),:]
+    #lcs = lcs[:,np.sum(lc[(np.where((enbins>soft[0]) & (enbins<=soft[1])))]),:]
+    #x= (np.where((enbins>hard[0]) & (enbins<=hard[1])))
+    #y= np.array(np.where((enbins>soft[0]) & (enbins<=soft[1])))-1
+    #print x,y
 
-
-    lc = []  
+    lcsoft = []  
+    lchard = []  
     for l in lcfiles:
         if args.npz:
-	    data = np.load(l)
-	    data = data['arr_0'].T
+	        data = np.load(l)
+	        data = data['arr_0'].T
         else:
-	    data = np.loadtxt(l, unpack=True)
+	        data = np.loadtxt(l, unpack=True)
         dt = data[0][1] - data[0][0]
-        lc.append(data[1])
+        lccol = data[1::2]
+        softband_indices= (np.where((enbins>=soft[0]) & (enbins<soft[1])))
+#        softband_indices = np.where(np.logical_and(enbins>=soft[0], enbins<soft[1])))
+        lcs = lccol[softband_indices].sum(axis=0)
+        print lcs
+        lc.append(lcs)
     lc = np.array(lc)
-    print lcs.shape
+    print lc.shape
+
 
     fbin, dfbin, avgc, avgpows, davgpows, avgpowh, davgpowh, nbinned = \
         calculate_crossspec(lcs, lch, dt, np.log10(flo), np.log10(fhi), fnbin)
@@ -231,9 +251,9 @@ def main():
 
     #### how to deal with adding small energy bins together
     #### coherence
-    #### dealing with npz files (argument)
 
 
 if __name__ == "__main__":
     import ipdb
-
+ 
+    main()    
