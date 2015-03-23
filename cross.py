@@ -20,12 +20,12 @@ def calculate_crossspec(lc1, lc2, dt, flo, fhi, nbins):
 
     # take fourier transform
     if USE_FFTW:
-        fs =  pyfftw.interfaces.numpy_fft.fft(lc1)
-        fh = pyfftw.interfaces.numpy_fft.fft(lc2)
+        fs =  pyfftw.interfaces.numpy_fft.fft(lc1, axis=1)
+        fh = pyfftw.interfaces.numpy_fft.fft(lc2, axis=1)
         freq = pyfftw.interfaces.numpy_fft.fftfreq(n,d=dt)
     else:
-        fs = np.fft.fft(lc1)
-        fh = np.fft.fft(lc2)
+        fs = np.fft.fft(lc1, axis=1)
+        fh = np.fft.fft(lc2, axis=1)
         freq = np.fft.fftfreq(n,d=dt)
     freq = np.array(fs.shape[0]*[freq])
 
@@ -35,10 +35,14 @@ def calculate_crossspec(lc1, lc2, dt, flo, fhi, nbins):
     freq = freq[:,1:n/2]
     m = freq.shape[1]
 
+    
     # calculate cross spectrum and power spectra
-    c = (2.*dt/(m*mean_lc1*mean_lc2)) * fs * fh.conjugate()
-    pows = (2.*dt/(m*mean_lc1)) * np.abs(fs)**2
-    powh = (2.*dt/(m*mean_lc2)) * np.abs(fh)**2
+    c, pows, powh = [],[],[] 
+    for i in range(fs.shape[0]):
+        c.append((2.*dt/(m*mean_lc1[i]*mean_lc2[i])) * fs[i,:] * fh[i,:].conjugate())
+        pows.append((2.*dt/(m*mean_lc1[i])) * np.abs(fs[i,:])**2)
+        powh.append((2.*dt/(m*mean_lc2[i])) * np.abs(fh[i,:])**2)
+    c = np.array(c); pows = np.array(pows); powh = np.array(powh)
 
     # take real and imaginary part of cross (for binning purposes)
     c_real = c.real
@@ -92,7 +96,7 @@ def calculate_lag(avgc, avgpows, avgpowh, nbinned, fbin):
 def calculate_coherence(avgc, avgpows, avgpowh, nbinned, fbin):
     raise NotImplementedError
 
-def plot_powspec(fbin, dfbin, avgpows, davgpows, avgpowh, davgpowh):
+def print_powspec(fbin, dfbin, avgpows, davgpows, avgpowh, davgpowh, name):
 
     fig = plt.figure()
     ax = fig.add_subplot(111)
@@ -125,7 +129,7 @@ def plot_powspec(fbin, dfbin, avgpows, davgpows, avgpowh, davgpowh):
     fp.write(out)
     fp.close()
 
-def plot_lag(fbin, dfbin, lag, dlag):
+def print_lag(fbin, dfbin, lag, dlag, name):
     fig = plt.figure()
     ax = fig.add_subplot(111)
     ax.errorbar(fbin, lag,
@@ -150,7 +154,7 @@ def plot_lag(fbin, dfbin, lag, dlag):
     fp.write(out)
     fp.close()
 
-def plot_coher(fbin, dfbin, coher, dcoher):
+def print_coher(fbin, dfbin, coher, dcoher, name):
     fig = plt.figure()
     ax = fig.add_subplot(111)
     ax.errorbar(fbin, coher,
@@ -191,7 +195,7 @@ def main():
     p.add_argument('--lag', action='store_true',default=True,help='Set to make lag spectrum')
     p.add_argument('--coher', action='store_true',default=False,help='Set to make coher spectrum')
     p.add_argument('--psd', action='store_true',default=False,help='Set to make hard and soft band PSDs')
-    p.add_argument("--name"    , metavar="name", type=str, default='',help="The root name of the output files.")
+    p.add_argument("--name", metavar="name", type=str, default='obs1',help="The root name of the output files.")
     p.add_argument('--npz', action='store_true',default=False,help='Set use .npz files instead of ascii. Default=False')
     args = p.parse_args()
 
@@ -200,24 +204,16 @@ def main():
     flo    = args.flo
     fhi = args.fhi
     fnbin = args.fnbin
+    name = args.name
     soft = np.array(args.soft.split(),float)
     hard = np.array(args.hard.split(),float)
-    ## ------------------------------------
-
-    # calculate energy bins 
     f = open(lcfiles[0], 'r')
     enbins = np.array(f.readline().split()[3:-1],float)
-    print enbins, soft, hard
-    
     Nc = len(enbins)-1 
+    ## ------------------------------------
 
-    #lcs = lcs[:,np.sum(lc[(np.where((enbins>soft[0]) & (enbins<=soft[1])))]),:]
-    #x= (np.where((enbins>hard[0]) & (enbins<=hard[1])))
-    #y= np.array(np.where((enbins>soft[0]) & (enbins<=soft[1])))-1
-    #print x,y
-
-    lcsoft = []  
-    lchard = []  
+    lightcurves_soft = []  
+    lightcurves_hard = []  
     for l in lcfiles:
         if args.npz:
 	        data = np.load(l)
@@ -225,31 +221,30 @@ def main():
         else:
 	        data = np.loadtxt(l, unpack=True)
         dt = data[0][1] - data[0][0]
-        lccol = data[1::2]
-        softband_indices= (np.where((enbins>=soft[0]) & (enbins<soft[1])))
-#        softband_indices = np.where(np.logical_and(enbins>=soft[0], enbins<soft[1])))
-        lcs = lccol[softband_indices].sum(axis=0)
-        print lcs
-        lc.append(lcs)
-    lc = np.array(lc)
-    print lc.shape
-
+        totlc = data[1::2]
+        softband_indices = np.where(np.logical_and(enbins>=soft[0], enbins<soft[1]))
+        hardband_indices = np.where(np.logical_and(enbins>=soft[0], enbins<soft[1]))
+        lcsoft = totlc[softband_indices].sum(axis=0)
+        lchard = totlc[hardband_indices].sum(axis=0)
+        lightcurves_soft.append(lcsoft)
+        lightcurves_hard.append(lchard)
+    lightcurves_soft = np.array(lightcurves_soft)
+    lightcurves_hard = np.array(lightcurves_hard)
 
     fbin, dfbin, avgc, avgpows, davgpows, avgpowh, davgpowh, nbinned = \
-        calculate_crossspec(lcs, lch, dt, np.log10(flo), np.log10(fhi), fnbin)
+        calculate_crossspec(lightcurves_soft, lightcurves_hard, dt, np.log10(flo), np.log10(fhi), fnbin)
 
-    if args.powspec:
-        print_powspec(fbin, dfbin, avgpows, davgpows, avgpowh, davgpowh)
+    if args.psd:
+        print_powspec(fbin, dfbin, avgpows, davgpows, avgpowh, davgpowh, name)
 
     if args.lag:
         lag, dlag = calculate_lag(avgc, avgpows, avgpowh, nbinned, fbin)
-        print_lag(fbin, dfbin, lag, dlag)
+        print_lag(fbin, dfbin, lag, dlag, name)
 
     if args.coher:
         coher, dcoher = calculate_coher(avgc, avgpows, avgpowh, nbinned, fbin)
-        print_coher(fbin, dfbin, coher, dcoher)
+        print_coher(fbin, dfbin, coher, dcoher, name)
 
-    #### how to deal with adding small energy bins together
     #### coherence
 
 
