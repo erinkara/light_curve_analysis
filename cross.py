@@ -119,7 +119,7 @@ def print_powspec(fbin, dfbin, avgpows, davgpows, avgpowh, davgpowh, name):
     ax.set_title("Power Spectra")
     ax.set_xlim(fbin[0]-dfbin[0],fbin[-1]+dfbin[-1])
     plt.show()
-    plt.savefig('%s_powspec.png')%(name)
+    plt.savefig('%s_powspec.png'%(name))
 
     # print outfile
     fp = open( '%s_powspec_4vsz.dat'%(name), 'w' )
@@ -144,7 +144,7 @@ def print_lag(fbin, dfbin, lag, dlag, name):
     l = plt.axhline(y=0)
     ax.set_xlim(fbin[0]-dfbin[0],fbin[-1]+dfbin[-1])
     plt.show()
-    plt.savefig('%s_lag.png')%(name)
+    plt.savefig('%s_lag.png'%(name))
 
     # print outfile
     fp = open( '%s_lag_4vsz.dat'%(name), 'w' )
@@ -171,7 +171,7 @@ def print_coher(fbin, dfbin, coher, dcoher, name):
     ax.set_xlim(fbin[0]-dfbin[0],fbin[-1]+dfbin[-1])
     ax.set_ylim(-0.2,1.2)
     plt.show()
-    plt.savefig('%s_coher.png')%(name)
+    plt.savefig('%s_coher.png'%(name))
 
     # print outfile
     fp = open( '%s_coher_4vsz.dat'%(name), 'w' )
@@ -181,16 +181,14 @@ def print_coher(fbin, dfbin, coher, dcoher, name):
     fp.write(out)
     fp.close()
 
-def frequency_dependent(data):
+def frequency_dependent_analysis(data,enbins,soft,hard):
 
-    dt = data[0][1] - data[0][0]
-    totlc = data[1::2] 
+    dt = data[0][0][1] - data[0][0][0]
+    totlc = data[:,1::2] 
     softband_indices = np.where(np.logical_and(enbins>=soft[0], enbins<soft[1]))
-    hardband_indices = np.where(np.logical_and(enbins>=soft[0], enbins<soft[1]))
-    lcsoft = totlc[softband_indices].sum(axis=0)
-    lchard = totlc[hardband_indices].sum(axis=0)
-    lightcurves_soft.append(lcsoft)
-    lightcurves_hard.append(lchard)
+    hardband_indices = np.where(np.logical_and(enbins>=hard[0], enbins<hard[1]))
+    lightcurves_soft = totlc[softband_indices].sum(axis=1)
+    lightcurves_hard = totlc[hardband_indices].sum(axis=1)
     lightcurves_soft = np.array(lightcurves_soft)
     lightcurves_hard = np.array(lightcurves_hard)
 
@@ -208,6 +206,14 @@ def frequency_dependent(data):
         coher, dcoher = calculate_coher(avgc, avgpows, avgpowh, nbinned, fbin)
         print_coher(fbin, dfbin, coher, dcoher, name)
 
+def energy_dependent_analysis(data):
+
+    dt = data[0][0][1] - data[0][0][0]
+    totlc = data[:,1::2]
+    for i in enbins:
+        if enb       
+
+
 def main():
     p = argparse.ArgumentParser(
         description="Calculate lag-frequency spectra",
@@ -220,6 +226,7 @@ def main():
     p.add_argument("--hard"  , metavar="hard", type=str, default="1 4", help="Hard band energies, e.g. '1 4'")
     p.add_argument("--fnbin"  , metavar="fnbin", type=float, default=10, help="Number of Frequency Bins")
     p.add_argument('--lag', action='store_true',default=True,help='Set to make lag spectrum')
+    p.add_argument('--freq', action='store_true',default=True,help='Set to make frequency-dependent products')
     p.add_argument('--coher', action='store_true',default=False,help='Set to make coher spectrum')
     p.add_argument('--psd', action='store_true',default=False,help='Set to make hard and soft band PSDs')
     p.add_argument("--name", metavar="name", type=str, default='obs1',help="The root name of the output files.")
@@ -236,7 +243,6 @@ def main():
     hard = np.array(args.hard.split(),float)
     f = open(lcfiles[0], 'r')
     enbins = np.array(f.readline().split()[3:-1],float)
-    Nc = len(enbins)-1 
     ## ------------------------------------
 
     all_data = []  
@@ -248,10 +254,9 @@ def main():
 	        data = np.loadtxt(l, unpack=True)  
         all_data.append(data)
     all_data = np.array(all_data)
-    ipdb.set_trace()
 
     if args.freq:
-        frequency_dependence(all_data)
+        frequency_dependent_analysis(all_data,enbins,soft,hard)
 
     #### coherence
 
