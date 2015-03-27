@@ -22,7 +22,7 @@ def main():
     p.add_argument("--fnbin"  , metavar="fnbin", type=float, default=10, help="Number of Frequency Bins")
     p.add_argument("--soft"  , metavar="soft", type=str, default="0.3 1", help="Soft band energies, e.g. '0.3 1'")
     p.add_argument("--hard"  , metavar="hard", type=str, default="1 4", help="Hard band energies, e.g. '1 4'")
-    p.add_argument('--lag', action='store_true',default=True,help='Set to make lag spectrum')
+    p.add_argument('--lag', action='store_true',default=False,help='Set to make lag spectrum')
     p.add_argument('--coher', action='store_true',default=False,help='Set to make coher spectrum')
     p.add_argument('--psd', action='store_true',default=False,help='Set to make hard and soft band PSDs')
     p.add_argument("--name", metavar="name", type=str, default='obs1',help="The root name of the output files.")
@@ -41,6 +41,7 @@ def main():
     enbins = np.array(f.readline().split()[3:-1],float)
     ## ------------------------------------
 
+
     all_data = []  
     for l in lcfiles:
         if args.npz:
@@ -57,6 +58,7 @@ def main():
     hardband_indices = np.where(np.logical_and(enbins>=hard[0], enbins<hard[1]))[0]
     lightcurves_soft = totlc[:,softband_indices].sum(axis=1)
     lightcurves_hard = totlc[:,hardband_indices].sum(axis=1)
+
 
     fbin, dfbin, avgc, avgpows, davgpows, avgpowh, davgpowh, nbinned = \
         fft_utils.calculate_crossspec(lightcurves_soft, lightcurves_hard, dt, np.log10(flo), np.log10(fhi), fnbin)

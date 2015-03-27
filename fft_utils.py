@@ -1,6 +1,7 @@
 # vim: shiftwidth=4 
 import argparse
 import numpy as np
+import ipdb
 from scipy.stats import binned_statistic
 import matplotlib.pyplot as plt
 try:
@@ -9,44 +10,44 @@ try:
 except ImportError:
     USE_FFTW = False
 
-def calculate_crossspec(lc1, lc2, dt, flo, fhi, nbins):
+def calculate_crossspec(lightcurve1, lightcurve2, dt, flo, fhi, nbins):
 
-    n = lc1.shape[1]
-    nlc = lc1.shape[0]
- 
-    # mean of light curves for rms normalization
-    mean_lc1 = np.mean(lc1, axis=1)
-    mean_lc2 = np.mean(lc2, axis=1)
+    nlc = lightcurve1.shape[0]
 
-    # take fourier transform
-    if USE_FFTW:
-        fs =  pyfftw.interfaces.numpy_fft.fft(lc1, axis=1)
-        fh = pyfftw.interfaces.numpy_fft.fft(lc2, axis=1)
-        freq = pyfftw.interfaces.numpy_fft.fftfreq(n,d=dt)
-    else:
-        fs = np.fft.fft(lc1, axis=1)
-        fh = np.fft.fft(lc2, axis=1)
-        freq = np.fft.fftfreq(n,d=dt)
-    freq = np.array(fs.shape[0]*[freq])
+    c_real, c_imag, pows, powh, frequencies = [],[],[],[],[] 
+    for lc1, lc2 in zip(lightcurve1, lightcurve2):
 
-    # only use positive frequencies. fs[0]=0
-    fs = fs[:,1:n/2]
-    fh = fh[:,1:n/2]
-    freq = freq[:,1:n/2]
-    m = freq.shape[1]
+	n = lc1.shape[0]
+     
+	# mean of light curves for rms normalization
+	mean_lc1 = np.mean(lc1)
+	mean_lc2 = np.mean(lc2)
 
-    
-    # calculate cross spectrum and power spectra
-    c, pows, powh = [],[],[] 
-    for i in range(fs.shape[0]):
-        c.append((2.*dt/(m*mean_lc1[i]*mean_lc2[i])) * fs[i,:] * fh[i,:].conjugate())
-        pows.append((2.*dt/(m*mean_lc1[i])) * np.abs(fs[i,:])**2)
-        powh.append((2.*dt/(m*mean_lc2[i])) * np.abs(fh[i,:])**2)
-    c = np.array(c); pows = np.array(pows); powh = np.array(powh)
+	# take fourier transform
+	if USE_FFTW:
+	    fs =  pyfftw.interfaces.numpy_fft.fft(lc1)
+	    fh = pyfftw.interfaces.numpy_fft.fft(lc2)
+	    freq = pyfftw.interfaces.numpy_fft.fftfreq(n,d=dt)
+	else:
+	    fs = np.fft.fft(lc1)
+	    fh = np.fft.fft(lc2)
+	    freq = np.fft.fftfreq(n,d=dt)
 
-    # take real and imaginary part of cross (for binning purposes)
-    c_real = c.real
-    c_imag = c.imag 
+	# only use positive frequencies. fs[0]=0
+	fs = fs[1:n/2]
+	fh = fh[1:n/2]
+	freq = freq[1:n/2]
+	m = freq.shape[0]
+	
+	# calculate cross spectrum and power spectra
+        c = (2.*dt/(m*mean_lc1*mean_lc2)) * fs * fh.conjugate()
+	c_real.append(c.real)
+	c_imag.append(c.imag) 
+        pows.append((2.*dt/(m*mean_lc1)) * np.abs(fs)**2)
+        powh.append((2.*dt/(m*mean_lc2)) * np.abs(fh)**2)
+        frequencies.append(freq)
+    c_real = np.array(c_real); c_imag = np.array(c_imag)
+    pows = np.array(pows); powh = np.array(powh); frequencies = np.array(frequencies)
 
     # calculate the bounds of the frequency bins
     fbounds = np.logspace(flo, fhi, nbins+1)
@@ -55,11 +56,11 @@ def calculate_crossspec(lc1, lc2, dt, flo, fhi, nbins):
     # make a for loop to go through each lc
     avgc_real, avgc_imag, avgpows, avgpowh, nbinned = [], [], [], [], []
     for i in range(pows.shape[0]):
-        avgc_real.append(binned_statistic(freq[i], c_real[i], statistic='mean', bins=fbounds)[0])
-        avgc_imag.append(binned_statistic(freq[i], c_imag[i], statistic='mean', bins=fbounds)[0])
-        avgpows.append(binned_statistic(freq[i], fs.imag[i], statistic='mean', bins=fbounds)[0])
-        avgpowh.append(binned_statistic(freq[i], fh.imag[i], statistic='mean', bins=fbounds)[0])
-        nbinned.append(binned_statistic(freq[i], pows[i], statistic='count', bins=fbounds)[0])
+        avgc_real.append(binned_statistic(frequencies[i], c_real[i], statistic='mean', bins=fbounds)[0])
+        avgc_imag.append(binned_statistic(frequencies[i], c_imag[i], statistic='mean', bins=fbounds)[0])
+        avgpows.append(binned_statistic(frequencies[i], pows[i], statistic='mean', bins=fbounds)[0])
+        avgpowh.append(binned_statistic(frequencies[i], powh[i], statistic='mean', bins=fbounds)[0])
+        nbinned.append(binned_statistic(frequencies[i], pows[i], statistic='count', bins=fbounds)[0])
     avgc_real = np.array(avgc_real)
     avgc_imag = np.array(avgc_imag)
     avgpows = np.array(avgpows)
@@ -72,8 +73,8 @@ def calculate_crossspec(lc1, lc2, dt, flo, fhi, nbins):
     avgc = np.mean(avgc, axis=0)
     avgpows = np.mean(avgpows, axis=0)
     avgpowh = np.mean(avgpowh, axis=0)
-    davgpows = np.mean(avgpows, axis=0)/np.sqrt(nlc)
-    davgpowh = np.mean(avgpowh, axis=0)/np.sqrt(nlc)
+    davgpows = avgpows/np.sqrt(nlc)
+    davgpowh = avgpowh/np.sqrt(nlc)
     nbinned = np.sum(nbinned, axis=0)
 
     # get frequency bins
@@ -124,7 +125,7 @@ def print_powspec(fbin, dfbin, avgpows, davgpows, avgpowh, davgpowh, name):
     # print outfile
     fp = open( '%s_powspec_4vsz.dat'%(name), 'w' )
     out = 'descriptor freq,+- pows,+- powh,+-\n'
-    out += ''.join('%3.3g %3.3g %3.3g %3.3g\n'%(fbin[i],dfbin[i],\
+    out += ''.join('%3.3g %3.3g %3.3g %3.3g %3.3g %3.3g\n'%(fbin[i],dfbin[i],\
         avgpows[i],davgpows[i],avgpowh[i],davgpowh[i]) for i in range(len(fbin)))
     fp.write(out)
     fp.close()
